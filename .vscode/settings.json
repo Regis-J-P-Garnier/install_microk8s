@@ -1,0 +1,6 @@
+{
+    "ansible.python.interpreterPath": "/home/linuxbrew/.linuxbrew/bin/python3",
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook": "file:///mnt/scripts/ansible/install_microk8s/production/install_microk8s_csi_driver_nfs.ans"
+    }
+}
