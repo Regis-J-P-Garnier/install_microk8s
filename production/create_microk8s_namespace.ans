@@ -1,14 +1,17 @@
 - name: create namespace on microk8s (ubuntu / rhel)
-  # INPUTS : config : a subdir in vars/configs with yaml config files
+  # EXTERNAL INPUTS #####################################################
+  #   config : a subdir in vars/configs with yaml config files
   hosts: microk8s_servers
   tasks:
 
-  - name: Include vars of microk8s_namespace.yml in microk8s_NS_file_content
+  # INPUTS ##############################################################
+  - name: '[INPUT] Include vars of microk8s_namespace.yml in microk8s_NS_file_content'
     ansible.builtin.include_vars:
       file: 'vars/configs/{{config}}/microk8s_namespace.yml'
       name: microk8s_NS_file_content
 
-  - name: create the namespace
+  # CREATING ############################################################
+  - name: '[SHELL] create the namespace'
     ansible.builtin.command:
       cmd: 'microk8s kubectl create namespace {{microk8s_NS_file_content.metadata.name}}'
     register: namespaces_status
@@ -16,27 +19,28 @@
     - namespaces_status.rc > 0
     - not '"Error from server (AlreadyExists)" in namespaces_status.stdout'
 
-  - name: valid namespace creation
+  - name: '[TEST] valid namespace creation'
     ansible.builtin.command:
       cmd: 'microk8s kubectl get namespaces -A'
     register: namespaces_status
     until: 'microk8s_NS_file_content.metadata.name | string in namespaces_status.stdout'
 
-  - name: pick up the data line
+  # REPORTING ##########################################################
+  - name: '[REPORT] pick up the data line'
     set_fact:
       data_lines: "{{ data_lines|default([]) +  [item] }}"
     when: (item.split() | length == 3) and (item.split()[0] != 'NAME')
     with_items:
     - "{{ namespaces_status.stdout_lines }}"
 
-  - name: find the line of the namespace
+  - name: '[REPORT] find the line of the namespace'
     set_fact:
       searched_line: "{{ item }}"
     when: item|trim is search(microk8s_NS_file_content.metadata.name)
     with_items:
     - "{{ data_lines }}"
 
-  - name: test if the namespace is active
+  - name: '[REPORT] test if the namespace is active'
     set_fact:
       attribute_name: "{{ searched_line.split()[0]|trim }}"
       attribute_status: "{{ searched_line.split()[1]|trim }}"

@@ -1,8 +1,9 @@
 - name: install snap of microk8s (ubuntu / rhel)
   hosts: microk8s_servers
   pre_tasks:
+  # PATCHES ############################################################
   # PATCH 1 PRE : compatibility issue with 'istvano.microk8s' for RHEL certificates
-  - name: PATCH 1 PRE create certificate UBUNTU style on RHEL (LN 1/2)
+  - name: '[PATCH] create certificate UBUNTU style on RHEL (LN 1/2)'
     ansible.builtin.file:
       src: /usr/share/ca-certificates
       dest: /usr/local/share/ca-certificates
@@ -10,7 +11,7 @@
       group: root
       state: link
     when: ansible_os_family == "RedHat"
-  - name: PATCH 1 PRE create certificate UBUNTU style on RHEL (LN 2/2)
+  - name: '[PATCH] create certificate UBUNTU style on RHEL (LN 2/2)'
     ansible.builtin.file:
       src: /usr/bin/update-ca-trust
       dest: /usr/bin/update-ca-certificates
@@ -19,21 +20,21 @@
       state: link
     when: ansible_os_family == "RedHat"
   # /PATCH 1 PRE
-  # READ VARS
-  - name: Include vars of microk8s_snap.yml
+  # INPUTS ##############################################################
+  - name: '[INPUT] Include vars of microk8s_snap.yml'
     ansible.builtin.include_vars:
       file: vars/microk8s_snap.yml
       name: microk8s_S_file_content
   - set_fact:
       microk8s_version: "{{microk8s_S_file_content.metadata.microk8s.version}}"
-  # /READ VARS    
 
-  # INSTALL SNAP & MAIN PLUGINS 
+  # INSTALL SNAP & MAIN PLUGINS #########################################
   # WARN: often fail on first try when snap not previously installed 
   #       (search for installed snap before update of the info in the register)
   #       just INTERRUPT AND RETRY
   roles:
-  - role: 'istvano.microk8s'
+  - name: '[ROLE] istvano.microk8s'
+    role: 'istvano.microk8s'
     vars:
       microk8s_plugins:
         dns: "10.0.8.1"
@@ -45,16 +46,15 @@
         portainer: true
   # /INSTALL SNAP & MAIN PLUGINS
 
-  #tasks:
-  #- shell: echo 'in tasks'
+  # PATCHES ############################################################
   post_tasks:
   # PATCH 1 POST : compatibility issue with 'istvano.microk8s' for RHEL certificates
-  - name: PATCH 1 POST create certificate UBUNTU style on RHEL (LN 1/2)
+  - name: '[PATCH] create certificate UBUNTU style on RHEL (LN 1/2)'
     ansible.builtin.file:
       path: /usr/local/share/ca-certificates
       state: absent
     when: ansible_os_family == "RedHat"
-  - name: PATCH 1 POST create certificate UBUNTU style on RHEL (LN 2/2)
+  - name: '[PATCH] create certificate UBUNTU style on RHEL (LN 2/2)'
     ansible.builtin.file:
       path: /usr/bin/update-ca-certificates
       state: absent
