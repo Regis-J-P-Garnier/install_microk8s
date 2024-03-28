@@ -1,12 +1,14 @@
 - name: install csi nfs driver on microk8s (ubuntu / rhel)
+  # REQUIREMENT: daemonize on servers
   hosts: microk8s_servers
   tasks:
-
+  # INPUTS ##############################################################
   - name: Include vars of prometheus_community.yml in prometheus_community_file_content
     ansible.builtin.include_vars:
       file: vars/prometheus_community.yml
       name: prometheus_community_file_content
 
+  # HELM3 ##############################################################
   # WARN: on some version helm4 is enable and can't be disabled
   - name: enable HELM3
     ansible.builtin.command:
@@ -31,6 +33,8 @@
     - '{{ microk8s_status_yaml.addons }}'
     failed_when: helm3_status_str not in "enabled"
 
+
+  # NAMESPACE ##########################################################
   - name: create the namespace
     ansible.builtin.command:
       cmd: 'microk8s kubectl create namespace monitoring'
@@ -45,6 +49,7 @@
     register: namespaces_status
     until: '"monitoring" in namespaces_status.stdout'
 
+  # INSTALLING #######################################################
   - name: install the repository with HELM3
     ansible.builtin.command:
       cmd: 'microk8s helm3 repo add  -n monitoring {{prometheus_community_file_content.metadata.repository.name}} {{prometheus_community_file_content.metadata.repository.url}}'
@@ -67,6 +72,7 @@
   - set_fact:
       install_packet_status_yaml: "{{ install_packet_status.stdout | from_yaml }}"
 
+  # LAUNCHING #######################################################
   # TODO: idea for further tests
   # microk8s kubectl --namespace monitoring get pods -l "release=kube-prometheus-stack" --output yaml
   - name: prometheus port report
@@ -77,22 +83,97 @@
     - "{{ hostvars[inventory_hostname].ansible_facts.all_ipv4_addresses }}"
   
   # TODO: is such a good idea to do a .service file (with copy/content) on the server then launch it ? 
-  # for testing purposes (60 second work the stop)
-  - name: forwarding Prometheus port
+  - name: Create a temporary directory
+    ansible.builtin.tempfile:
+      state: directory
+      suffix: scripts
+    register: temp_directory_scripts
+
+  - name: test the port to ensure not used
     ansible.builtin.shell:
-      cmd: 'microk8s kubectl -n monitoring port-forward --address {{host_address_ipv4_str}} prometheus-kube-prometheus-stack-prometheus-0 {{prometheus_community_file_content.metadata.prometheus.host.port}}:9090 &'
-    async: 60
-    poll: 0
-    register: prometheus_pid
-  # TODO: add curl test
+      cmd: 'netstat -ltp | grep {{prometheus_community_file_content.metadata.prometheus.host.port}} | wc -w'
+    register: port_status_unused
+    failed_when:
+      - port_status_unused.stdout != "0"
 
   - name: prometheus pid report
     ansible.builtin.debug:
-      msg: "return of the forwarding Prometheus request : {{prometheus_pid.ansible_job_id}}"
+        var: port_status_unused    
+
+  # DEPRECATED : have been replaced by a DAEMONIZE script
+  #- name: 'forwarding Prometheus port on {{host_address_ipv4_str}}:{{prometheus_community_file_content.metadata.prometheus.host.port}}'
+  #  ansible.builtin.script:
+  #    cmd: /mnt/scripts/ansible/install_microk8s/production/resources/scripts/prometheus_forwarding_port.sh {{host_address_ipv4_str}} {{prometheus_community_file_content.metadata.prometheus.host.port}}
+  #  register: forwarding_prometheus_port_script_output
+  
+  - name: copy script production/resources/scripts/prometheus_forwarding_port.sh to server  
+    ansible.builtin.copy:
+      src: /mnt/scripts/ansible/install_microk8s/production/resources/scripts/prometheus_forwarding_port.sh
+      dest: "{{ temp_directory_scripts.path }}"
+      mode: '0744'
+    register: forwarding_prometheus_port_script_file_status
+
+  - name: create launcher (templatize script)
+    ansible.builtin.copy:
+      content: "#!/usr/bin/bash\n{{ forwarding_prometheus_port_script_file_status.dest }} {{host_address_ipv4_str}} {{prometheus_community_file_content.metadata.prometheus.host.port}}"
+      dest: "{{ temp_directory_scripts.path }}/prometheus_forwarding_port_launcher.sh"
+      mode: '0744'
+    register: forwarding_prometheus_port_script_launcher_file_status
+
+  - name: daemonize script
+    ansible.builtin.shell:
+      cmd: 'daemonize {{ forwarding_prometheus_port_script_launcher_file_status.dest }}'
+    register: daemonize_status
+
+  - name: remove the script launcher
+    ansible.builtin.file:
+      path: "{{ forwarding_prometheus_port_script_launcher_file_status.dest }}"
+      state: absent
+    when: temp_directory_scripts.path is defined            
+
+  - name: remove the script file prometheus_forwarding_port.sh
+    ansible.builtin.file:
+      path: "{{ temp_directory_scripts.path }}/prometheus_forwarding_port.sh"
+      state: absent
+    when: temp_directory_scripts.path is defined        
+
+  - name: remove the temporary directory
+    ansible.builtin.file:
+      path: "{{ temp_directory_scripts.path }}"
+      state: absent
+    when: temp_directory_scripts.path is defined
+
+  - name: test the port to ensure used
+    ansible.builtin.shell:
+      cmd: 'netstat -ltp | grep {{prometheus_community_file_content.metadata.prometheus.host.port}}'
+    register: port_status_used
+    failed_when: 
+      - '"9890"     not in port_status_used.stdout'
+      - '"tcp"      not in port_status_used.stdout'
+      - '"LISTEN"   not in port_status_used.stdout'
+      - '"kubectl"  not in port_status_used.stdout'
+      - port_status_used.rc != 0 
+    
+  - name: 'test the prometheus service on {{host_address_ipv4_str}}:{{prometheus_community_file_content.metadata.prometheus.host.port}}'
+    ansible.builtin.uri:
+      url: 'http://{{host_address_ipv4_str}}:{{prometheus_community_file_content.metadata.prometheus.host.port}}'
+      method: GET
+      status_code: 200
+
+  # REPORTING ##########################################################
+  - name: extract pid
+    set_fact:
+      daemon_pid: "{{ item.split()[-1].split('/')[0]|trim }}"
+    with_items:
+    - "{{ port_status_used.stdout_lines }}"
+  - name: prometheus pid report
+    ansible.builtin.debug:
+        msg: "deamon pid on host : {{daemon_pid}}"
+
   - name: prometheus port report
     ansible.builtin.debug:
       msg: "open on host port : {{host_address_ipv4_str}}:{{prometheus_community_file_content.metadata.prometheus.host.port}}"
-
+    
 
 
 
