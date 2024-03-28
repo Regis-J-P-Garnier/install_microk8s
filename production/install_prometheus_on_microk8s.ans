@@ -33,7 +33,6 @@
     - '{{ microk8s_status_yaml.addons }}'
     failed_when: helm3_status_str not in "enabled"
 
-
   # NAMESPACE ##########################################################
   - name: create the namespace
     ansible.builtin.command:
