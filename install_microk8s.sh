@@ -1,8 +1,16 @@
 #!/usr/bin/bash
+# install microk8s
+# INPUTS#######################################################################
+# input contract
+if [ $# -ne 0 ]
+then
+    echo "no parameters expected" >&2 
+    exit -1
+fi
+# ENVIRONMENT #################################################################
 # cryptography for passwords
 export SSL_CERT_DIR=/etc/ssl/certs
-##############################################################################
-# INSTALL SNAP ###############################################################
+# INSTALL SNAP ################################################################
 # requirements (role)
 ansible-galaxy          install \
                         -r ./production/requirements/install_microk8s_snap_requirements.yml
@@ -15,3 +23,5 @@ ansible-playbook        -b ./production/install_microk8s_snap.ans \
                         --vault-password-file ~/.vault_pass.txt \
                         --extra-vars '@./production/vars/vault/vault_passwd.yml'
 # /INSTALL SNAP ###############################################################
+# exit
+exit 0
