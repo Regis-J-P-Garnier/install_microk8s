@@ -1,0 +1,5 @@
+kind: ad-hoc
+metadata:
+  size: 1Gi
+  name:
+    fullname: pvcdevopstest

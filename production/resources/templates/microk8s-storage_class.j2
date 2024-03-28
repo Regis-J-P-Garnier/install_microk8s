@@ -1,0 +1,14 @@
+---
+apiVersion: {{ microk8s_CDN_file_content.metadata.storage_api_version }}
+kind: StorageClass
+provisioner: {{ microk8s_CDN_file_content.metadata.provisioner_name }}
+metadata:
+  name: {{ storage_class_name }}
+parameters:
+  server: {{ microk8s_SC_file_content.metadata.server.address }}
+  share: {{ microk8s_SC_file_content.metadata.server.share.path }}
+mountOptions:
+  - hard
+  - nfsvers=4
+volumeBindingMode: Immediate
+reclaimPolicy: Delete

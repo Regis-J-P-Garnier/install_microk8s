@@ -1,0 +1,114 @@
+- name: create the PersistentVolumeClaim on microk8s (ubuntu / rhel)
+  # INPUTS : config : a subdir in vars/configs with yaml config files
+  hosts: microk8s_servers
+  tasks:
+
+  # WARN: config is an external var (cli)
+  - name: Include vars of microk8s_namespace.yml in microk8s_NS_file_content
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_namespace.yml'
+      name: microk8s_NS_file_content
+
+  - name: Include vars of microk8s_csi_driver_nfs.yml in microk8s_CDN_file_content
+    ansible.builtin.include_vars:
+      file: vars/microk8s_csi_driver_nfs.yml
+      name: microk8s_CDN_file_content
+
+  - name: Include vars of microk8s_storage_class.yml in microk8s_SC_file_content
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_storage_class.yml'
+      name: microk8s_SC_file_content
+
+  - name: Include vars of microk8s_persistent_volume_claim.yml in microk8s_PVC_file_content
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_persistent_volume_claim.yml'
+      name: microk8s_PVC_file_content
+  # USE some variables like name if exist or reate new ones    
+
+  - name: IF StorageClass fullname parameter exist, register it
+    set_fact:
+      storage_class_name: "{{microk8s_SC_file_content.metadata.name.fullname}}"
+    when: microk8s_SC_file_content.metadata.name.fullname is defined
+
+  - name: ELSE compute StorageClass fullname from StorageClass suffix parameter
+    set_fact:
+      storage_class_name: "sc-csi-nfs-{{microk8s_SC_file_content.metadata.name.suffix}}"
+    when: microk8s_SC_file_content.metadata.name.fullname is not defined
+  
+  - name: IF PersistentVolumeClaim fullname parameter exist, register it
+    set_fact:
+      persistent_volume_claim_name: "{{microk8s_PVC_file_content.metadata.name.fullname}}"
+    when: microk8s_PVC_file_content.metadata.name.fullname is defined
+
+  - name: ELSE compute PersistentVolumeClaim fullname from uuid
+    set_fact:
+      persistent_volume_claim_name: "pvc-{{ ansible_date_time.iso8601_micro | to_uuid }}"
+    when: microk8s_PVC_file_content.metadata.name.fullname is not defined
+
+  - name: Create temporary directory for configuration files
+    ansible.builtin.tempfile:
+      state: directory
+      suffix: ansible
+    register: tmp_ansible_dir_handler
+
+  - name: show templating results
+    ansible.builtin.debug:
+      msg: "{{ lookup('ansible.builtin.template', 'resources/templates/microk8s_persistent_volume_claim.j2') }}"
+
+  - name: create PersistentVolumeClaim file
+    ansible.builtin.template:
+      dest: "{{ tmp_ansible_dir_handler.path }}/pvc.yml"
+      src: resources/templates/microk8s_persistent_volume_claim.j2
+      group: sys
+      owner: root
+      mode: 0555
+    register: pvc_file_handler
+
+  - name: Check if the PersistentVolumeClaim file exists
+    stat:
+      path: "{{ pvc_file_handler.dest }}"
+    register: is_pvc_file
+
+  - name: apply the PersistentVolumeClaim file to microk8s
+    ansible.builtin.shell: 'microk8s kubectl apply --namespace {{microk8s_NS_file_content.metadata.name}} --output yaml -f - < {{ pvc_file_handler.dest }}'
+    register: microk8s_pvc_apply_status
+    failed_when: microk8s_pvc_apply_status.rc > 0
+    changed_when: false
+  - set_fact:
+      microk8s_status_yaml: "{{ microk8s_pvc_apply_status.stdout | from_yaml }}"
+
+  - name: remove the PersistentVolumeClaim file
+    ansible.builtin.file:
+      path: "{{ pvc_file_handler.dest }}"
+      state: absent
+    when: pvc_file_handler.dest is defined
+
+  - name: remove the temporary directory
+    ansible.builtin.file:
+      path: "{{ tmp_ansible_dir_handler.path }}"
+      state: absent
+    when: tmp_ansible_dir_handler.path is defined
+
+  # WARN : not realy reliable cause use "last line" only and not all log
+  #        not thread-safe
+  # WARN : some version/configuration have YAML output by default, rewrite test on migrate
+  # TODO : use a bash script with copy/content, survey its output (a file ?) and delete it after use ?
+  # PROTO *************************************************************
+  #- name: test if PersistentVolumeClaim succeed
+  #  ansible.builtin.shell: "microk8s kubectl describe pvc --namespace {{microk8s_NS_file_content.metadata.name}}"
+  #  until:
+  #  - (pvc_describe.stdout_lines[-1].split())[1] == 'ProvisioningSucceeded'
+  #  retries: 60
+  #  delay: 3
+  #  register: pvc_describe
+  # /PROTO ************************************************************  
+  - name: claimed ressource
+    ansible.builtin.debug:
+      var: persistent_volume_claim_name
+  - name: reserved ressources
+    ansible.builtin.debug:
+      var: (pvc_describe.stdout_lines[-1].split())[-1]
+  - name: reserved ressources
+    ansible.builtin.debug:
+      var: (pvc_describe.stdout_lines[-1].split())[3]
+

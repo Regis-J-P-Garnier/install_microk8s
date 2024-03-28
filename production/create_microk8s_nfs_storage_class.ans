@@ -1,0 +1,107 @@
+- name: define the StorageClass on microk8s (ubuntu / rhel)
+  # INPUTS : config : a subdir in vars/configs with yaml config files
+  hosts: microk8s_servers
+  tasks:
+
+  - name: Include vars of microk8s_namespace.yml in microk8s_NS_file_content
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_namespace.yml'
+      name: microk8s_NS_file_content
+
+  - name: Include vars of microk8s_csi_driver_nfs.yml in microk8s_CDN_file_content
+    ansible.builtin.include_vars:
+      file: vars/microk8s_csi_driver_nfs.yml
+      name: microk8s_CDN_file_content
+
+  - name: Include vars of microk8s_storage_class.yml in microk8s_SC_file_content
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_storage_class.yml'
+      name: microk8s_SC_file_content
+
+  - name: Include vars of microk8s_persistent_volume_claim.yml in microk8s_PVC_file_content
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_persistent_volume_claim.yml'
+      name: microk8s_PVC_file_content
+  # USE some variables like name if exist or create new ones    
+
+  # create missing value, add IF (ternary ?)
+  - name: IF StorageClass fullname parameter exist, register it
+    set_fact:
+      storage_class_name: "{{microk8s_SC_file_content.metadata.name.fullname}}"
+    when: microk8s_SC_file_content.metadata.name.fullname is defined
+
+  - name: ELSE compute StorageClass fullname from StorageClass suffix parameter
+    set_fact:
+      storage_class_name: "sc-csi-nfs-{{microk8s_SC_file_content.metadata.name.suffix}}"
+    when: microk8s_SC_file_content.metadata.name.fullname is not defined
+
+  - name: Create temporary directory for configuration files
+    # modify file content with variables
+    # SC
+    ansible.builtin.tempfile:
+      state: directory
+      suffix: ansible
+    register: tmp_ansible_dir_handler
+
+  - name: show templating results
+    ansible.builtin.debug:
+      msg: "{{ lookup('ansible.builtin.template', 'resources/templates/microk8s-storage_class.j2') }}"
+
+  - name: create StorageClass file
+    #ansible.builtin.copy:
+    ansible.builtin.template:
+      dest: "{{ tmp_ansible_dir_handler.path }}/sc.yml"
+      #content: "{{ microk8s_SC_file_content | to_nice_yaml( width=50, explicit_start=True, explicit_end=false) }}"
+      src: resources/templates/microk8s-storage_class.j2
+      group: sys
+      owner: root
+      mode: 0555
+    register: sc_file_handler
+
+  # will not be modified, not a block
+  #- name: "insert NFS driver related info in StorageClass file"
+  #  lineinfile:
+  #    dest: "{{ sc_file_handler.dest }}"
+  #    line: "{{ item }}"
+  #  with_items:
+  #  - "provisioner: {{ microk8s_CDN_file_content.metadata.provisioner_name}}"
+  #  - "apiVersion: {{microk8s_CDN_file_content.metadata.storage_api_version}}"
+
+  - name: debug
+    ansible.builtin.debug:
+      var: sc_file_handler
+
+  - name: Display contents
+    command: "cat {{ sc_file_handler.dest }}"
+    register: command_output
+
+  - name: Print to console
+    debug:
+      msg: "{{command_output.stdout}}"
+
+  - name: Check if the StorageClass file exists
+    stat:
+      path: "{{ sc_file_handler.dest }}"
+    register: is_sc_file
+
+  - name: apply the StorageClass file to microk8s
+    ansible.builtin.shell: 'microk8s kubectl apply --namespace {{microk8s_NS_file_content.metadata.name}} --output yaml -f - < {{ sc_file_handler.dest }}'
+    register: microk8s_sc_apply_status
+    failed_when: microk8s_sc_apply_status.rc > 0
+    changed_when: false
+
+  - set_fact:
+      microk8s_status_yaml: "{{ microk8s_sc_apply_status.stdout | from_yaml }}"
+      # tests
+
+  - name: remove the StorageClass file
+    ansible.builtin.file:
+      path: "{{ sc_file_handler.dest }}"
+      state: absent
+    when: sc_file_handler.dest is defined
+
+  - name: remove the temporary directory
+    ansible.builtin.file:
+      path: "{{ tmp_ansible_dir_handler.path }}"
+      state: absent
+    when: tmp_ansible_dir_handler.path is defined

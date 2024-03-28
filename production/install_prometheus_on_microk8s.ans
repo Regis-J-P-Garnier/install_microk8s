@@ -1,0 +1,102 @@
+- name: install csi nfs driver on microk8s (ubuntu / rhel)
+  hosts: microk8s_servers
+  tasks:
+
+  - name: Include vars of prometheus_community.yml in prometheus_community_file_content
+    ansible.builtin.include_vars:
+      file: vars/prometheus_community.yml
+      name: prometheus_community_file_content
+
+  # WARN: on some version helm4 is enable and can't be disabled
+  - name: enable HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s enable helm3'
+    register: enable_helm3_status
+    failed_when: enable_helm3_status.rc > 0
+
+  - name: valid HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s status --format yaml'
+    register: microk8s_status
+    failed_when: microk8s_status.rc > 0
+    changed_when: false
+  - set_fact:
+      microk8s_status_yaml: "{{ microk8s_status.stdout | from_yaml }}"
+
+  - name: test the enable status of helm3
+    set_fact:
+      helm3_status_str: '{{ item.status }}'
+    when: (item.name|string == 'helm3')
+    with_items:
+    - '{{ microk8s_status_yaml.addons }}'
+    failed_when: helm3_status_str not in "enabled"
+
+  - name: create the namespace
+    ansible.builtin.command:
+      cmd: 'microk8s kubectl create namespace monitoring'
+    register: namespaces_status
+    failed_when:
+    - namespaces_status.rc > 0
+    - not '"Error from server (AlreadyExists)" in namespaces_status.stdout'
+
+  - name: valid namespace creation
+    ansible.builtin.command:
+      cmd: 'microk8s kubectl get namespaces -A'
+    register: namespaces_status
+    until: '"monitoring" in namespaces_status.stdout'
+
+  - name: install the repository with HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 repo add  -n monitoring {{prometheus_community_file_content.metadata.repository.name}} {{prometheus_community_file_content.metadata.repository.url}}'
+    register: install_repository_status
+    failed_when:
+    - install_repository_status.rc > 0
+    - not '"already exists with the same configuration, skipping" in install_repository_status.stdout'
+
+  - name: update the repository with HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 repo update -n monitoring'
+
+  - name: install the packet with HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 install -n monitoring {{prometheus_community_file_content.metadata.packet.name}} {{prometheus_community_file_content.metadata.repository.name}}/{{prometheus_community_file_content.metadata.packet.name}} --output yaml'
+    register: install_packet_status
+    failed_when:
+    - install_packet_status.rc > 0
+    - not '"cannot re-use a name that is still in use" in install_packet_status.stdout'
+  - set_fact:
+      install_packet_status_yaml: "{{ install_packet_status.stdout | from_yaml }}"
+
+  # TODO: idea for further tests
+  # microk8s kubectl --namespace monitoring get pods -l "release=kube-prometheus-stack" --output yaml
+  - name: prometheus port report
+    set_fact:
+      host_address_ipv4_str: '{{item}}'
+    when: '"192.168.127" in item'
+    with_items:
+    - "{{ hostvars[inventory_hostname].ansible_facts.all_ipv4_addresses }}"
+  
+  # TODO: is such a good idea to do a .service file (with copy/content) on the server then launch it ? 
+  # for testing purposes (60 second work the stop)
+  - name: forwarding Prometheus port
+    ansible.builtin.shell:
+      cmd: 'microk8s kubectl -n monitoring port-forward --address {{host_address_ipv4_str}} prometheus-kube-prometheus-stack-prometheus-0 {{prometheus_community_file_content.metadata.prometheus.host.port}}:9090 &'
+    async: 60
+    poll: 0
+    register: prometheus_pid
+  # TODO: add curl test
+
+  - name: prometheus pid report
+    ansible.builtin.debug:
+      msg: "return of the forwarding Prometheus request : {{prometheus_pid.ansible_job_id}}"
+  - name: prometheus port report
+    ansible.builtin.debug:
+      msg: "open on host port : {{host_address_ipv4_str}}:{{prometheus_community_file_content.metadata.prometheus.host.port}}"
+
+
+
+
+
+
+
+

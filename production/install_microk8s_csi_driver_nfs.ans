@@ -1,0 +1,102 @@
+- name: install csi nfs driver on microk8s (ubuntu / rhel)
+  hosts: microk8s_servers
+  tasks:
+
+  - name: Include vars of microk8s_namespace.yml in microk8s_NS_file_content
+    ansible.builtin.include_vars:
+      file: vars/microk8s_namespace.yml
+      name: microk8s_NS_file_content
+
+  - name: Include vars of microk8s_csi_driver_nfs.yml in microk8s_CDN_file_content
+    ansible.builtin.include_vars:
+      file: vars/microk8s_csi_driver_nfs.yml
+      name: microk8s_CDN_file_content
+
+  # WARN: on some version helm4 is enable and can't be disabled
+  - name: enable HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s enable helm3'
+    register: enable_helm3_status
+    failed_when: enable_helm3_status.rc > 0
+
+  - name: valid HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s status --format yaml'
+    register: microk8s_status
+    failed_when: microk8s_status.rc > 0
+    changed_when: false
+
+  - set_fact:
+      microk8s_status_yaml: "{{ microk8s_status.stdout | from_yaml }}"
+
+  - name: test the enable status of helm3
+    set_fact:
+      helm3_status_str: '{{ item.status }}'
+    when: (item.name|string == 'helm3')
+    with_items:
+    - '{{ microk8s_status_yaml.addons }}'
+    failed_when: helm3_status_str not in "enabled"
+
+  - name: install the repository with HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 repo add {{microk8s_CDN_file_content.metadata.driver_name}} {{microk8s_CDN_file_content.metadata.repository_url}}'
+    register: install_repository_status
+    failed_when:
+    - install_repository_status.rc > 0
+    - not '"already exists with the same configuration, skipping" in install_repository_status.stdout'
+
+  - name: update the repository with HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 repo update'
+
+  - name: install the driver with HELM3
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 install {{microk8s_CDN_file_content.metadata.driver_name}} {{microk8s_CDN_file_content.metadata.path_name}}/{{microk8s_CDN_file_content.metadata.driver_name}} --set kubeletDir=/var/snap/microk8s/common/var/lib/kubelet --namespace {{microk8s_NS_file_content.metadata.name}} --output yaml'
+    register: install_driver_status
+
+  - set_fact:
+      install_driver_status_yaml: "{{ install_driver_status.stdout | from_yaml }}"
+
+  - name: test the deployed status of the driver
+    set_fact:
+      install_driver_status_str: '{{ install_driver_status_yaml.info.status }}'
+    failed_when: install_driver_status_str not in "deployed"
+
+  - name: search for the driver
+    ansible.builtin.command:
+      cmd: 'microk8s kubectl get csidrivers --output yaml'
+    register: csidrivers_status
+
+  - set_fact:
+      csidrivers_status_yaml: "{{ csidrivers_status.stdout | from_yaml }}"
+
+  - name: test the existence of csi nfs driver
+    set_fact:
+      driver_name_str: '{{item.metadata.name}}'
+    when: (item.metadata.name|string == 'nfs.csi.k8s.io')
+    with_items:
+    - '{{ csidrivers_status_yaml["items"] }}'
+    failed_when: >
+      (item.metadata.annotations['meta.helm.sh/release-name'] not in microk8s_CDN_file_content.metadata.driver_name) or    
+      (item.metadata.annotations['meta.helm.sh/release-namespace'] not in microk8s_NS_file_content.metadata.name)
+    # need to wait ?
+
+  - name: conditions of readiness of the driver
+    ansible.builtin.command:
+      cmd: 'microk8s kubectl wait pod --for condition=ready --selector app.kubernetes.io/name={{microk8s_CDN_file_content.metadata.driver_name}} --namespace {{microk8s_NS_file_content.metadata.name}}'
+    register: ready_driver_status
+    changed_when: false
+
+  - name: test the ready status of helm3
+    ansible.builtin.assert:
+      that:
+      - '{{ "condition met" in (item|string) }}'
+    with_items:
+    - '{{ ready_driver_status.stdout_lines }}'
+
+
+
+
+
+
+
