@@ -136,10 +136,14 @@
   # SERVICES TEST #########################################################
   - name: '[WAIT] for the server to start on port {{ prometheus_community_file_content.metadata.prometheus.host.port }}'
     ansible.builtin.wait_for:
-      port: prometheus_community_file_content.metadata.prometheus.host.port
-      delay: 10              
+      host: "{{ host_address_ipv4_str }}"
+      port: "{{ prometheus_community_file_content.metadata.prometheus.host.port | int }}"
+      state: present
+      delay: 0
+      connect_timeout: 1
+      sleep: 1
 
-  - name: '[TEST] test the port to ensure used'
+  - name: '[TEST] test the port to ensure used by prometheus'
     ansible.builtin.shell:
       cmd: 'netstat -ltp | grep {{prometheus_community_file_content.metadata.prometheus.host.port}}'
     register: port_status_used

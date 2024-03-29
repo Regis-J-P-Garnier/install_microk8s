@@ -29,12 +29,12 @@
   # create missing value, add IF (ternary ?)
   - name: '[INPUT_COMPUTE] IF StorageClass fullname parameter exist, register it'
     set_fact:
-      storage_class_name: "{{microk8s_SC_file_content.metadata.name.fullname}}"
+      storage_class_name: "{{ microk8s_SC_file_content.metadata.name.fullname }}"
     when: microk8s_SC_file_content.metadata.name.fullname is defined
 
   - name: '[INPUT_COMPUTE] ELSE compute StorageClass fullname from StorageClass suffix parameter'
     set_fact:
-      storage_class_name: "sc-csi-nfs-{{microk8s_SC_file_content.metadata.name.suffix}}"
+      storage_class_name: "sc-csi-nfs-{{ microk8s_SC_file_content.metadata.name.suffix }}"
     when: microk8s_SC_file_content.metadata.name.fullname is not defined
 
   # CREATING ############################################################
@@ -62,7 +62,8 @@
     register: sc_file_handler
 
   - name: '[SHELL] apply the StorageClass file to microk8s'
-    ansible.builtin.shell: 'microk8s kubectl apply --namespace {{microk8s_NS_file_content.metadata.name}} --output yaml -f - < {{ sc_file_handler.dest }}'
+    ansible.builtin.shell: 
+      cmd: 'microk8s kubectl apply --namespace {{ microk8s_NS_file_content.metadata.name }} --output yaml -f - < {{ sc_file_handler.dest }}'
     register: microk8s_sc_apply_status
     failed_when: microk8s_sc_apply_status.rc > 0
     changed_when: false
@@ -77,3 +78,38 @@
       - sc_file_handler.dest
       - tmp_ansible_dir_handler.path
     when: sc_file_handler.dest is defined
+
+  # PATCHING DEFAULT ###################################################
+  - name: '[VAR] define variables'
+    set_fact:
+      false_is_default_patch: '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+      true_is_default_patch: '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+    when:
+      - microk8s_SC_file_content.metadata.default == true
+  
+  - name: '[SHELL] get storageclasses.storage.k8s.io'
+    ansible.builtin.shell:
+      cmd: 'microk8s kubectl get storageclasses.storage.k8s.io --output yaml'
+    register: storageclasses_ante
+    when:
+      - microk8s_SC_file_content.metadata.default == true
+    
+  - name: '[SHELL] remove default tag to all'
+    ansible.builtin.shell:
+      cmd: "microk8s kubectl patch storageclasses.storage.k8s.io {{ item.metadata.name }} -p '{{ false_is_default_patch }}'"
+    with_items: '{{ (storageclasses_ante.stdout | from_yaml)["items"] }}'
+    when:
+      - microk8s_SC_file_content.metadata.default == true
+
+  - name: '[SHELL] get storageclasses.storage.k8s.io'
+    ansible.builtin.shell:
+      cmd: 'microk8s kubectl get storageclasses.storage.k8s.io --output yaml'
+    register: storageclasses
+    when:
+      - microk8s_SC_file_content.metadata.default == true
+
+  - name: '[SHELL] add default tag to current'
+    ansible.builtin.shell:
+      cmd: "microk8s kubectl patch storageclasses.storage.k8s.io {{ storage_class_name }} -p '{{ true_is_default_patch }}'"
+    when:
+      - microk8s_SC_file_content.metadata.default == true  

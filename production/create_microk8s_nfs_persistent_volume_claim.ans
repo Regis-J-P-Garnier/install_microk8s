@@ -39,13 +39,13 @@
   
   - name: '[INPUT_COMPUTE] IF PersistentVolumeClaim fullname parameter exist, register it'
     set_fact:
-      persistent_volume_claim_name: "{{microk8s_PVC_file_content.metadata.name.fullname}}"
-    when: microk8s_PVC_file_content.metadata.name.fullname is defined
+      persistent_volume_claim_name: "{{microk8s_PVC_file_content.metadata.name}}"
+    when: microk8s_PVC_file_content.metadata.name is defined
 
   - name: '[INPUT_COMPUTE] ELSE compute PersistentVolumeClaim fullname from uuid'
     set_fact:
       persistent_volume_claim_name: "pvc-{{ ansible_date_time.iso8601_micro | to_uuid }}"
-    when: microk8s_PVC_file_content.metadata.name.fullname is not defined
+    when: microk8s_PVC_file_content.metadata.name is not defined
 
   # CREATING ###############################################################
   - name: '[FILE] create temporary directory for configuration files'

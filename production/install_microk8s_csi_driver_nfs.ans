@@ -59,9 +59,9 @@
       install_driver_status_yaml: "{{ install_driver_status.stdout | from_yaml }}"
 
   # REPORTING ##########################################################
-  # TODO: search documentatio nif a port is activated by driver manager or controller for wait
+  # TODO: search documentation if a port is activated by driver manager or controller for wait
   - name: '[WAIT] wait between starting and update of status'
-    nsible.builtin.wait_for:
+    ansible.builtin.wait_for:
       timeout: 3
     delegate_to: localhost
 

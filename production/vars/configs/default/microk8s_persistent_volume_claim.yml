@@ -1,5 +1,4 @@
 kind: ad-hoc
 metadata:
   size: 1Gi
-  name:
-    fullname: pvc-0
+  name: pvc-0
