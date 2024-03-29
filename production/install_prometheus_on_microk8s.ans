@@ -131,7 +131,13 @@
       - forwarding_prometheus_port_script_launcher_file_status.dest  
       - "{{ temp_directory_scripts.path }}/prometheus_forwarding_port.sh"
       - temp_directory_scripts.path
-    when: temp_directory_scripts.path is defined                  
+    when: temp_directory_scripts.path is defined
+
+  # SERVICES TEST #########################################################
+  - name: '[WAIT] for the server to start on port {{ prometheus_community_file_content.metadata.prometheus.host.port }}'
+    ansible.builtin.wait_for:
+      port: prometheus_community_file_content.metadata.prometheus.host.port
+      delay: 10              
 
   - name: '[TEST] test the port to ensure used'
     ansible.builtin.shell:
@@ -165,11 +171,3 @@
   - name: '[REPORT] prometheus port logging'
     ansible.builtin.debug:
       msg: "open on host port : {{host_address_ipv4_str}}:{{prometheus_community_file_content.metadata.prometheus.host.port}}"
-    
-
-
-
-
-
-
-

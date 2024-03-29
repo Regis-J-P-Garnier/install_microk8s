@@ -1,13 +1,11 @@
 - name: install csi nfs driver on microk8s (ubuntu / rhel)
   hosts: microk8s_servers
+  vars:
+    namespace_value: kube-system
+    kubelet_lib_path: /var/snap/microk8s/common/var/lib/kubelet
   tasks:
 
   # INPUTS ##############################################################
-  - name: '[INPUT] Include vars of microk8s_namespace.yml in microk8s_NS_file_content'
-    ansible.builtin.include_vars:
-      file: vars/microk8s_namespace.yml
-      name: microk8s_NS_file_content
-
   - name: '[INPUT] Include vars of microk8s_csi_driver_nfs.yml in microk8s_CDN_file_content'
     ansible.builtin.include_vars:
       file: vars/microk8s_csi_driver_nfs.yml
@@ -44,7 +42,7 @@
       cmd: 'microk8s helm3 repo add {{microk8s_CDN_file_content.metadata.driver_name}} {{microk8s_CDN_file_content.metadata.repository_url}}'
     register: install_repository_status
     failed_when:
-      - install_repository_status.rc > 0
+      - install_repository_status.rc != 0
       - not '"already exists with the same configuration, skipping" in install_repository_status.stdout'
 
   - name: '[HELM3_REPO] update the repository'
@@ -53,13 +51,20 @@
 
   - name: '[HELM3_PACKET] install the driver'
     ansible.builtin.command:
-      cmd: 'microk8s helm3 install {{microk8s_CDN_file_content.metadata.driver_name}} {{microk8s_CDN_file_content.metadata.path_name}}/{{microk8s_CDN_file_content.metadata.driver_name}} --set kubeletDir=/var/snap/microk8s/common/var/lib/kubelet --namespace {{microk8s_NS_file_content.metadata.name}} --output yaml'
+      #cmd: 'microk8s helm3 install csi-driver-nfs csi-driver-nfs/csi-driver-nfs --namespace kube-system     --set kubeletDir=/var/snap/microk8s/common/var/lib/kubelet --output yaml'
+      cmd: 'microk8s helm3 install {{ microk8s_CDN_file_content.metadata.driver_name }} {{ microk8s_CDN_file_content.metadata.path_name }}/{{ microk8s_CDN_file_content.metadata.driver_name }} --set kubeletDir={{ kubelet_lib_path }} --namespace {{ namespace_value }}  --output yaml'
     register: install_driver_status
 
   - set_fact:
       install_driver_status_yaml: "{{ install_driver_status.stdout | from_yaml }}"
 
   # REPORTING ##########################################################
+  # TODO: search documentatio nif a port is activated by driver manager or controller for wait
+  - name: '[WAIT] wait between starting and update of status'
+    nsible.builtin.wait_for:
+      timeout: 3
+    delegate_to: localhost
+
   - name: '[TEST] deployed status of the driver'
     set_fact:
       install_driver_status_str: '{{ install_driver_status_yaml.info.status }}'
@@ -71,7 +76,7 @@
     register: csidrivers_status
 
   - set_fact:
-      csidrivers_status_yaml: "{{ csidrivers_status.stdout | from_yaml }}"
+      csidrivers_status_yaml: "{{ csidrivers_status.stdout | from_yaml }}"    
 
   - name: '[TEST] is csi nfs driver active ?'
     # need to wait ?
@@ -82,11 +87,12 @@
       - '{{ csidrivers_status_yaml["items"] }}'
     failed_when: >
       (item.metadata.annotations['meta.helm.sh/release-name'] not in microk8s_CDN_file_content.metadata.driver_name) or    
-      (item.metadata.annotations['meta.helm.sh/release-namespace'] not in microk8s_NS_file_content.metadata.name)
+      (item.metadata.annotations['meta.helm.sh/release-namespace'] not in namespace_value)
 
   - name: '[TEST] evaluation of readiness of csi nfs driver'
     ansible.builtin.command:
-      cmd: 'microk8s kubectl wait pod --for condition=ready --selector app.kubernetes.io/name={{microk8s_CDN_file_content.metadata.driver_name}} --namespace {{microk8s_NS_file_content.metadata.name}}'
+      'microk8s kubectl wait pod --for condition=ready --selector app.kubernetes.io/name=csi-driver-nfs --namespace {{ namespace_value }}'
+      #cmd: 'microk8s kubectl wait pod --for condition=ready --selector app.kubernetes.io/name={{microk8s_CDN_file_content.metadata.driver_name}} --namespace {{microk8s_NS_file_content.metadata.name}}'
     register: ready_driver_status
     changed_when: false
 

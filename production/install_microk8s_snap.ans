@@ -39,11 +39,12 @@
       microk8s_plugins:
         dns: "10.0.8.1"
         ingress: true
-        metrics-server: true
+        metrics-server: false
         cert-manager: true
         helm3: true
         hostpath: false
-        portainer: true
+        portainer: false
+        metallb: false
   # /INSTALL SNAP & MAIN PLUGINS
 
   # PATCHES ############################################################
