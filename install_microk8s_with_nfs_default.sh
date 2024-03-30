@@ -17,7 +17,7 @@ declare -ar a_steps_data=(
     ) # global RO array
 
 # MAIN ######################################################################
-# run_workflow ARR:DATA INT:DATA_WIDTH INT:SKIP_STEP
+# run_workflow INT:SKIP_STEP INT:DATA_WIDTH ARR:DATA
 run_workflow $skip_step $a_steps_data_width "${a_steps_data[@]}"
 exit $?
 
