@@ -21,4 +21,5 @@ ansible-playbook        ./production/create_microk8s_nfs_persistent_volume_claim
                         --extra-vars config=${CONFIG}
 # /CREATE PVC ################################################################# 
 # exit
-exit 0
+RET_CODE=$?
+exit $RET_CODE

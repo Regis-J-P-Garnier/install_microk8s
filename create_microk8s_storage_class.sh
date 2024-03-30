@@ -21,4 +21,5 @@ ansible-playbook        ./production/create_microk8s_nfs_storage_class.ans \
                         --extra-vars config=${CONFIG} 
 # /CREATE SC ################################################################## 
 # exit
-exit 0
+RET_CODE=$?
+exit $RET_CODE

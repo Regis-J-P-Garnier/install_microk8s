@@ -18,4 +18,5 @@ ansible-playbook        ./production/install_microk8s_csi_driver_nfs.ans \
                         --extra-vars '@./production/vars/vault/vault_passwd.yml'
 # /INSTALL PROMETHEUS #########################################################
 # exit
-exit 0
+RET_CODE=$?
+exit $RET_CODE

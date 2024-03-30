@@ -21,4 +21,5 @@ ansible-playbook        ./production/create_microk8s_namespace.ans \
                         --extra-vars config=${CONFIG} 
 # /CREATE NAMESPACE ###########################################################
 # exit
-exit 0
+RET_CODE=$?
+exit $RET_CODE

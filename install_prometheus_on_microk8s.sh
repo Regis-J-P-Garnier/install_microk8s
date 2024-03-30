@@ -18,4 +18,5 @@ ansible-playbook        ./production/install_prometheus_on_microk8s.ans \
                         --extra-vars '@./production/vars/vault/vault_passwd.yml'
 # /INSTALL PROMETHEUS #########################################################
 # exit
-exit 0
+RET_CODE=$?
+exit $RET_CODE

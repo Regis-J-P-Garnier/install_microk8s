@@ -13,7 +13,7 @@ export SSL_CERT_DIR=/etc/ssl/certs
 # INSTALL SNAP ################################################################
 # requirements (role)
 ansible-galaxy          install \
-                        -r ./production/requirements/install_microk8s_snap_requirements.yml
+                        -r ./production/requirements/install_microk8s_snap_requirements.yml                        
 # launch playbook
 # WARN: often fail on first try when snap not previously installed 
 #       (search for installed snap before update of the info in the register)
@@ -24,4 +24,5 @@ ansible-playbook        -b ./production/install_microk8s_snap.ans \
                         --extra-vars '@./production/vars/vault/vault_passwd.yml'
 # /INSTALL SNAP ###############################################################
 # exit
-exit 0
+RET_CODE=$?
+exit $RET_CODE
