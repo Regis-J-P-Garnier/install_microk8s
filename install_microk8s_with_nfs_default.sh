@@ -36,6 +36,9 @@ function run_playbook() {
 # TODO: add args and move in a library
 function run_workflow(){
     # execute workflow
+    declare -ar A_STEPS_DATA=$1
+    declare -ir A_STEPS_DATA_WIDTH=$2
+    declare -ir SKIP_STEP=$3
     declare -i RET_CODE=-127
     declare -i a_steps_data_length=${#A_STEPS_DATA[@]}
     for (( i=$((SKIP_STEP * A_STEPS_DATA_WIDTH)); i<${a_steps_data_length}; i=$(( i + A_STEPS_DATA_WIDTH )) ));
@@ -66,12 +69,12 @@ declare -ir A_STEPS_DATA_WIDTH=2 # global RO integer
 declare -ar A_STEPS_DATA=(
     "./install_microk8s.sh"                         'install of microk8s failed: retry (if snap install) or debug !'
     "./install_microk8s_csi_driver_nfs.sh"          'install nfs driver failed: debug !'
-    "./create_microk8s_storage_class.sh default"    'install nfs SC or set it as default failed: debug !'
+    "./create_microk8s_storage_class.sh default"    'install nfs SC or set it as default in default namespace failed: debug !'
     ) # global RO array
 
 # MAIN ######################################################################
-# execute
-run_workflow
+# run_workflow ARR:DATA INT:DATA_WIDTH INT:SKIP_STEP
+run_workflow A_STEPS_DATA A_STEPS_DATA_WIDTH SKIP_STEP
 exit $?
 
 
