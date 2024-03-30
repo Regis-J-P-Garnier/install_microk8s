@@ -8,9 +8,7 @@ function input_contracts(){
         echo "no parameters expected, allow one for starting step (0,1...)" >&2 
         exit -1
     fi
-    if [[ $# -gt 0 ]]; then
-        SKIP_STEP=$(($1)) # it's a numeric 
-    fi
+    SKIP_STEP=$(($1)) # it's a numeric 
     return $SKIP_STEP
 }
 
@@ -36,9 +34,9 @@ function _run_playbook() {
 # TODO: add args and move in a library
 function run_workflow(){
     # execute workflow
-    declare -ar A_STEPS_DATA=$1
-    declare -ir A_STEPS_DATA_WIDTH=$2
-    declare -ir SKIP_STEP=$3
+    declare -ir SKIP_STEP=$(($1))
+    shift; declare -ir A_STEPS_DATA_WIDTH=$(($1))
+    shift; declare -ar A_STEPS_DATA=("$@") # rebuilt the array
     declare -i RET_CODE=-127
     declare -i a_steps_data_length=${#A_STEPS_DATA[@]}
     for (( i=$((SKIP_STEP * A_STEPS_DATA_WIDTH)); i<${a_steps_data_length}; i=$(( i + A_STEPS_DATA_WIDTH )) ));
