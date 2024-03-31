@@ -1,0 +1,101 @@
+- name: install the docker registry (ubuntu / rhel)
+  # see : https://www.paulsblog.dev/how-to-install-a-private-docker-container-registry-in-kubernetes/
+  # EXTERNAL INPUTS #####################################################
+  #   config : a subdir in vars/configs with yaml config files
+  hosts: microk8s_servers
+  tasks:
+  - name: '[FILE] Creates directory /var/docker-registry'
+    ansible.builtin.file:
+      path: '/var/docker-registry'
+      state: directory
+  - name: '[FILE] copy password file to /var/docker-registry'
+    ansible.builtin.copy:
+      src: 'vars/configs/{{config}}/resources/scripts/gen-pass.sh'
+      dest: /var/docker-registry/gen-pass.sh
+      mode: '0744'
+      backup: yes
+  - name: '[SHELL] execute the password'
+    ansible.builtin.shell:
+      cmd: '/var/docker-registry/gen-pass.sh'  
+      chdir: '/var/docker-registry'
+      executable: /bin/bash
+    register: gen_pass
+
+  # INPUTS ##############################################################
+  - name: '[INPUT] Include vars of docker-registry.yml in DR_file_content'
+    ansible.builtin.include_vars:
+      file: vars/docker-registry.yml
+      name: DR_file_content
+
+  - name: '[INPUT] Include vars of microk8s_namespace.yml in microk8s_NS_file_content'
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_namespace.yml'
+      name: microk8s_NS_file_content
+
+  - name: '[INPUT] Include vars of microk8s_storage_class.yml in microk8s_SC_file_content'
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_storage_class.yml'
+      name: microk8s_SC_file_content
+
+  - name: '[INPUT] Include vars of micromicrok8s_persistent_volume_claim.yml in microk8s_PVC_file_content'
+    ansible.builtin.include_vars:
+      file: 'vars/configs/{{config}}/microk8s_persistent_volume_claim.yml'
+      name: microk8s_PVC_file_content     
+
+  - name: '[INPUT] Include password from [DISTANT]/var/docker-registry/registry-cred/htpasswd'
+    ansible.builtin.slurp:
+      src: '/var/docker-registry/registry-creds/htpasswd'
+    register: htpasswd_file_handler
+
+  # HELM3 ###############################################################
+  # WARN: on some version helm4 is enable and can't be disabled
+  - name: '[HELM3] enable HELM3 module'
+    ansible.builtin.command:
+      cmd: 'microk8s enable helm3'
+    register: enable_helm3_status
+    failed_when: enable_helm3_status.rc > 0
+
+  - name: '[HELM3] valid HELM3 module'
+    ansible.builtin.command:
+      cmd: 'microk8s status --format yaml'
+    register: microk8s_status
+    failed_when: microk8s_status.rc > 0
+    changed_when: false
+  - set_fact:
+      microk8s_status_yaml: "{{ microk8s_status.stdout | from_yaml }}"
+
+  - name: '[TEST] HELM3 "enable" status'
+    set_fact:
+      helm3_status_str: '{{ item.status }}'
+    when: (item.name|string == 'helm3')
+    with_items:
+      - '{{ microk8s_status_yaml.addons }}'
+    failed_when: helm3_status_str not in "enabled"
+
+
+  # INSTALLING #######################################################
+  - name: '[HELM3_REPO] install {{DR_file_content.metadata.repository.name}} repository'
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 repo add -n {{microk8s_NS_file_content.metadata.name}} {{DR_file_content.metadata.repository.name}} {{DR_file_content.metadata.repository.url}}'
+    register: install_repository_status
+    failed_when:
+      - install_repository_status.rc != 0
+      - not '"already exists with the same configuration, skipping" in install_repository_status.stdout'
+  
+  - name: '[HELM3_REPO] update the repository'
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 repo update'
+
+  - name: '[FILE] creating config file'
+    ansible.builtin.template:
+      src: 'vars/configs/{{config}}/resources/templates/registry-chart.j2'
+      dest: '/var/docker-registry/registry-chart.yaml'
+      mode: '0644'
+
+  - name: '[HELM3_PACKET] install the registry'
+    ansible.builtin.command:
+      cmd: 'microk8s helm3 install -f /var/docker-registry/registry-chart.yaml {{DR_file_content.metadata.packet.name}} --namespace {{microk8s_NS_file_content.metadata.name}} {{DR_file_content.metadata.repository.name}}/{{DR_file_content.metadata.packet.name}} --output yaml'
+    register: install_driver_status
+
+  # REPORTING ##########################################################
+  # 'kubectl get pods -n docker-registry {{DR_file_content.metadata.packet.name}}'

@@ -9,3 +9,6 @@ spec:
   resources:
     requests:
       storage: "{{ microk8s_PVC_file_content.metadata.size }}"
+{% if microk8s_PVC_file_content.metadata.volume.name is defined %}
+  volumeName: {{ microk8s_PVC_file_content.metadata.volume.name }}
+{% endif %}

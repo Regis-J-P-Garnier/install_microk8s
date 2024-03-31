@@ -1,0 +1,6 @@
+kind: ad-hoc
+metadata:
+  size: 60Gi
+  name: docker-registry-pv-claim
+  volume:
+    name: "pvc-69e084bf-e684-4ebc-9e40-48f00341f2e6"

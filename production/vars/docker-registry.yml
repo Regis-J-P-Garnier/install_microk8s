@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ad-hoc
+metadata:
+  packet:
+    name: docker-registry
+  repository:
+    name: twuni
+    url: https://helm.twun.io
+  registry:
+    host:
+      port: 5000

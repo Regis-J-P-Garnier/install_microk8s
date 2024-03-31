@@ -1,0 +1,10 @@
+---
+replicaCount: 1
+persistence:
+  enabled: true
+  size: 60Gi
+  deleteEnabled: true
+  storageClass: {{microk8s_SC_file_content.metadata.name}}
+  existingClaim: {{microk8s_PVC_file_content.metadata.name}}
+secrets:
+  htpasswd: "{{ htpasswd_file_handler['content'] | b64decode  }}"
